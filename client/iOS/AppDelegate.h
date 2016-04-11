@@ -11,7 +11,7 @@
 
 @class MainTabBarController;
 
-@interface AppDelegate : NSObject <UIApplicationDelegate> {
+@interface AppDelegate : UIResponder <UIApplicationDelegate> {
 
     MainTabBarController* _tabBarController;
 }

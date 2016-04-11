@@ -55,6 +55,7 @@
 
 // send a key stroke event using the given virtual key code
 - (void)sendVirtualKeyCode:(int)keyCode;
+- (void)sendVirtualKey:(int)vKey up:(BOOL)up;
 
 // toggle ctrl key, returns true if pressed, otherwise false
 - (void)toggleCtrlKey;

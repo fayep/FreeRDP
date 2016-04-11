@@ -31,6 +31,12 @@
         memset(_unicode_map, 0, sizeof(_unicode_map));
 		
 		// init vkey map - used for alpha-num characters
+        // these are all bytes, we have an int to play with.
+        // let's use
+        _virtual_key_map[' '] = VK_SPACE;
+        _virtual_key_map['\r'] = VK_RETURN;
+        _virtual_key_map['\t'] = VK_TAB;
+        _virtual_key_map['\b'] = VK_BACK;
 		_virtual_key_map['0'] = VK_KEY_0;
 		_virtual_key_map['1'] = VK_KEY_1;
 		_virtual_key_map['2'] = VK_KEY_2;
@@ -68,6 +74,18 @@
 		_virtual_key_map['x'] = VK_KEY_X;
 		_virtual_key_map['y'] = VK_KEY_Y;
 		_virtual_key_map['z'] = VK_KEY_Z;
+        _virtual_key_map[';'] = VK_OEM_1;
+        _virtual_key_map['='] = VK_OEM_PLUS;
+        _virtual_key_map[','] = VK_OEM_COMMA;
+        _virtual_key_map['-'] = VK_OEM_MINUS;
+        _virtual_key_map['.'] = VK_OEM_PERIOD;
+        _virtual_key_map['/'] = VK_OEM_2;
+        _virtual_key_map['`'] = VK_OEM_3;
+        _virtual_key_map['['] = VK_OEM_4;
+        _virtual_key_map['\\'] = VK_OEM_5;
+        _virtual_key_map[']'] = VK_OEM_6;
+        _virtual_key_map['\''] = VK_OEM_7;
+        
         
         // init scancode map - used for special characters
         _unicode_map['-'] = 45;
@@ -161,7 +179,7 @@
 // performs all conversions etc.
 - (void)sendUnicode:(int)character
 {   
-    if(isalnum(character))
+    if(isalnum(character) || TRUE)
         [self handleAlphaNumChar:character];
     else
         [self handleSpecialKey:character];
@@ -259,6 +277,7 @@
 - (void)handleSpecialKey:(int)character
 {
     NSDictionary* eventDescriptor = nil;
+    
     if(character < 256)
     {
         // convert the character to a unicode character
@@ -271,7 +290,7 @@
                                [NSNumber numberWithUnsignedShort:code], @"unicode_char",
                                nil];
     }
-
+    
     if (eventDescriptor == nil)
         eventDescriptor = [NSDictionary dictionaryWithObjectsAndKeys:	
                            @"keyboard", @"type",

@@ -17,10 +17,17 @@
 #import "VerifyCertificateController.h"
 #import "BlockAlertView.h"
 
-#define TOOLBAR_HEIGHT 30
+#define TOOLBAR_HEIGHT 24
 
 #define AUTOSCROLLDISTANCE 20
 #define AUTOSCROLLTIMEOUT 0.05
+
+@interface RDPSessionViewController ()
+
+@property NSArray *commands;
+@property int modifiers;
+
+@end
 
 @interface RDPSessionViewController (Private)
 -(void)showSessionToolbar:(BOOL)show;
@@ -29,8 +36,8 @@
 - (void)suspendSession;
 - (NSDictionary*)eventDescriptorForMouseEvent:(int)event position:(CGPoint)position;
 - (void)handleMouseMoveForPosition:(CGPoint)position;
+- (void)updateZoom:(CGSize)size;
 @end
-
 
 @implementation RDPSessionViewController
 
@@ -60,6 +67,9 @@
         _autoscroll_with_touchpointer = [[NSUserDefaults standardUserDefaults] boolForKey:@"ui.auto_scroll_touchpointer"];
         _is_autoscrolling = NO;
         
+        _commands = nil;
+        _modifiers = 0;
+        
         [UIView setAnimationDelegate:self];
         [UIView setAnimationDidStopSelector:@selector(animationStopped:finished:context:)];
     }
@@ -87,13 +97,130 @@
     [_session_toolbar setFrame:CGRectMake(0.0, -TOOLBAR_HEIGHT, [[self view] bounds].size.width, TOOLBAR_HEIGHT)];
 }
 
+- (BOOL)canBecomeFirstResponder {
+    return YES;
+}
+
+- (BOOL)prefersStatusBarHidden {
+    return YES;
+}
 
 // Implement viewDidLoad to do additional setup after loading the view, typically from a nib.
 - (void)viewDidLoad 
 {
     [super viewDidLoad];
+    
+    NSMutableArray *commands = [[NSMutableArray alloc] init];
+    NSString *characters = @"`1234567890-=\b\tqwertyuiop[]\\asdfghjkl;'\rzxcvbnm,./ ";
+
+    /* Modifier keys */
+    for (NSInteger m = 1; m < 32; m++) {
+        [commands addObject:[UIKeyCommand keyCommandWithInput:@"" modifierFlags:m << 16 action:@selector(handleCommand:)]];
+    }
+    /* Printable */
+    for (NSInteger m = 0; m < 32; m++) {
+        for (NSInteger i = 0; i < characters.length; i++) {
+            NSString *input = [characters substringWithRange:NSMakeRange(i, 1)];
+            [commands addObject:[UIKeyCommand keyCommandWithInput:input modifierFlags:m << 16 action:@selector(handleCommand:)]];
+        }
+        /* Arrows */
+        [commands addObject:[UIKeyCommand keyCommandWithInput:UIKeyInputUpArrow modifierFlags:m << 16 action:@selector(handleCommand:)]];
+        [commands addObject:[UIKeyCommand keyCommandWithInput:UIKeyInputDownArrow modifierFlags:m << 16 action:@selector(handleCommand:)]];
+        [commands addObject:[UIKeyCommand keyCommandWithInput:UIKeyInputLeftArrow modifierFlags:m << 16 action:@selector(handleCommand:)]];
+        [commands addObject:[UIKeyCommand keyCommandWithInput:UIKeyInputRightArrow modifierFlags:m << 16 action:@selector(handleCommand:)]];
+        [commands addObject:[UIKeyCommand keyCommandWithInput:UIKeyInputEscape modifierFlags:m << 16 action:@selector(handleCommand:)]];
+    }
+    _commands = commands.copy;
 }
 
+- (void)handleCommand:(UIKeyCommand *)command
+{
+    UIKeyModifierFlags modifierFlags = command.modifierFlags;
+    NSString *input = command.input;
+    int curChar = 0;
+    if (modifierFlags != _modifiers) {
+        if ((modifierFlags & UIKeyModifierShift) != (_modifiers & UIKeyModifierShift)) {
+            [[RDPKeyboard getSharedRDPKeyboard] sendVirtualKey:VK_LSHIFT up:((modifierFlags & UIKeyModifierShift)==0)];
+            NSLog(@"Shift state toggled");
+        } else if ((modifierFlags & UIKeyModifierControl) != (_modifiers & UIKeyModifierControl)) {
+            [[RDPKeyboard getSharedRDPKeyboard] sendVirtualKey:VK_LCONTROL up:((modifierFlags & UIKeyModifierControl)==0)];
+            NSLog(@"Control state toggled");
+        } else if ((modifierFlags & UIKeyModifierAlternate) != (_modifiers & UIKeyModifierAlternate)) {
+            [[RDPKeyboard getSharedRDPKeyboard] sendVirtualKey:VK_LMENU up:((modifierFlags & UIKeyModifierAlternate)==0)];
+            NSLog(@"Alt state toggled");
+        } else if ((modifierFlags & UIKeyModifierCommand) != (_modifiers & UIKeyModifierCommand)) {
+            [[RDPKeyboard getSharedRDPKeyboard] sendVirtualKey:VK_LWIN | KBDEXT up:((modifierFlags & UIKeyModifierCommand)==0)];
+            NSLog(@"Win state toggled");
+        }
+        _modifiers = modifierFlags;
+    }
+    if (input.length > 0) {
+        curChar = [input characterAtIndex:0];
+        if (modifierFlags & UIKeyModifierAlphaShift) {
+            // Caps Lock doesn't work this way, so we're exploiting it for hardware ESC/F1-12
+            if (curChar == '`')
+                curChar = VK_ESCAPE;
+            else if (curChar == '1')
+                curChar = VK_F1;
+            else if (curChar == '2')
+                curChar = VK_F2;
+            else if (curChar == '3')
+                curChar = VK_F3;
+            else if (curChar == '4')
+                curChar = VK_F4;
+            else if (curChar == '5')
+                curChar = VK_F5;
+            else if (curChar == '6')
+                curChar = VK_F6;
+            else if (curChar == '7')
+                curChar = VK_F7;
+            else if (curChar == '8')
+                curChar = VK_F8;
+            else if (curChar == '9')
+                curChar = VK_F9;
+            else if (curChar == '0')
+                curChar = VK_F10;
+            else if (curChar == '-')
+                curChar = VK_F11;
+            else if (curChar == '=')
+                curChar = VK_F12;
+            else if (curChar == 8)
+                curChar = VK_DELETE | KBDEXT;
+            else if (input == UIKeyInputLeftArrow)
+                curChar = VK_HOME | KBDEXT;
+            else if (input == UIKeyInputRightArrow)
+                curChar = VK_END | KBDEXT;
+            else if (input == UIKeyInputUpArrow)
+                curChar = VK_PRIOR | KBDEXT;
+            else if (input == UIKeyInputDownArrow)
+                curChar = VK_NEXT | KBDEXT;
+            [[RDPKeyboard getSharedRDPKeyboard] sendVirtualKeyCode:curChar];
+        } else if (input.length > 5) {
+            if (input == UIKeyInputUpArrow)
+                curChar = VK_UP | KBDEXT;
+            else if (input == UIKeyInputDownArrow)
+                curChar = VK_DOWN | KBDEXT;
+            else if (input == UIKeyInputLeftArrow)
+                curChar = VK_LEFT | KBDEXT;
+            else if (input == UIKeyInputRightArrow)
+                curChar = VK_RIGHT | KBDEXT;
+            [[RDPKeyboard getSharedRDPKeyboard] sendVirtualKeyCode:curChar];
+        } else {
+            [[RDPKeyboard getSharedRDPKeyboard] sendUnicode:curChar];
+        }
+    }
+}
+
+- (NSArray *)keyCommands
+{
+    return _commands;
+}
+
+/*
+- (void)setCommands: (NSArray *)incoming
+{
+}
+*/
 
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)interfaceOrientation {
     return YES;
@@ -118,7 +245,11 @@
     // e.g. self.myOutlet = nil;
 }
 
-- (void)viewWillAppear:(BOOL)animated 
+- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
+    [self updateZoom:size];
+}
+
+- (void)viewWillAppear:(BOOL)animated
 {
 	[super viewWillAppear:animated];
 
@@ -200,7 +331,7 @@
     return _session_view;	
 }
 
--(void)scrollViewDidEndZooming:(UIScrollView *)scrollView withView:(UIView *)view atScale:(float)scale
+-(void)scrollViewDidEndZooming:(UIScrollView *)scrollView withView:(UIView *)view atScale:(CGFloat)scale
 {
     NSLog(@"New zoom scale: %f", scale);
 	[_session_view setNeedsDisplay];
@@ -269,23 +400,23 @@
     {
         objectIdx = 2;
         curItem = (UIBarButtonItem*)[[_keyboard_toolbar items] objectAtIndex:objectIdx];
-        [curItem setStyle:[keyboard shiftPressed] ? UIBarButtonItemStyleDone : UIBarButtonItemStyleBordered];
+        [curItem setStyle:[keyboard shiftPressed] ? UIBarButtonItemStyleDone : UIBarButtonItemStylePlain];
     }
     
     // ctrl button
     objectIdx += 2;
     curItem = (UIBarButtonItem*)[[_keyboard_toolbar items] objectAtIndex:objectIdx];
-    [curItem setStyle:[keyboard ctrlPressed] ? UIBarButtonItemStyleDone : UIBarButtonItemStyleBordered];
+    [curItem setStyle:[keyboard ctrlPressed] ? UIBarButtonItemStyleDone : UIBarButtonItemStylePlain];
     
     // win button
     objectIdx += 2;
     curItem = (UIBarButtonItem*)[[_keyboard_toolbar items] objectAtIndex:objectIdx];
-    [curItem setStyle:[keyboard winPressed] ? UIBarButtonItemStyleDone : UIBarButtonItemStyleBordered];
+    [curItem setStyle:[keyboard winPressed] ? UIBarButtonItemStyleDone : UIBarButtonItemStylePlain];
     
     // alt button
     objectIdx += 2;
     curItem = (UIBarButtonItem*)[[_keyboard_toolbar items] objectAtIndex:objectIdx];
-    [curItem setStyle:[keyboard altPressed] ? UIBarButtonItemStyleDone : UIBarButtonItemStyleBordered];    
+    [curItem setStyle:[keyboard altPressed] ? UIBarButtonItemStyleDone : UIBarButtonItemStylePlain];
 }
 
 #pragma mark -
@@ -357,6 +488,18 @@
     [[self navigationController] popViewControllerAnimated:YES];    
 }
 
+- (void)updateZoom:(CGSize)size {
+    CGFloat zoomScale = MIN(size.width / _session_scrollview.contentSize.width,
+                          size.height / _session_scrollview.contentSize.height);
+    
+    if (zoomScale > 1) {
+        zoomScale = 1;
+    }
+    
+    [_session_scrollview setMinimumZoomScale:zoomScale];
+    [_session_scrollview setZoomScale:zoomScale];
+}
+
 - (void)sessionBitmapContextWillChange:(RDPSession*)session
 {
     // calc new view frame
@@ -364,14 +507,16 @@
     CGRect view_rect = CGRectMake(0, 0, sess_params->DesktopWidth, sess_params->DesktopHeight);
 
     // reset  zoom level and update content size
-    [_session_scrollview setZoomScale:1.0];
+
     [_session_scrollview setContentSize:view_rect.size];
 
     // set session view size
     [_session_view setFrame:view_rect];
+    CGSize size = [_session_scrollview bounds].size;
+    [self updateZoom:size];
     
     // show/hide toolbar
-    [_session setToolbarVisible:![[NSUserDefaults standardUserDefaults] boolForKey:@"ui.hide_tool_bar"]];
+    [_session setToolbarVisible:FALSE];
     [self showSessionToolbar:[_session toolbarVisible]];
 }
 
@@ -571,6 +716,8 @@
 		CGFloat height = [[UIScreen mainScreen] bounds].size.height;
 		_keyboard_last_height = height - keyboardEndFrame.origin.y;
 	}
+    
+    _keyboard_last_height = previousHeight;
 	
 	CGFloat shiftHeight = _keyboard_last_height - previousHeight;
 	
@@ -820,7 +967,7 @@
 // callback for reset view
 -(void)touchPointerResetSessionView
 {
-    [_session_scrollview setZoomScale:1.0 animated:YES];
+    [_session_scrollview setZoomScale:0.5 animated:YES];
 }
 
 @end
@@ -843,6 +990,7 @@
         [UIView setAnimationDuration:.4];
         [UIView setAnimationCurve:UIViewAnimationCurveLinear];
         [_session_toolbar setFrame:CGRectMake(0.0, 0.0, [[self view] bounds].size.width, TOOLBAR_HEIGHT)];
+        [_session_scrollview setFrame:CGRectMake(0.0, TOOLBAR_HEIGHT, [_session_scrollview bounds].size.width, [_session_scrollview bounds].size.height - TOOLBAR_HEIGHT)];
         [UIView commitAnimations];		
         _session_toolbar_visible = YES;        
     }
@@ -852,7 +1000,8 @@
         [UIView setAnimationDuration:.4];
         [UIView setAnimationCurve:UIViewAnimationCurveLinear];
         [_session_toolbar setFrame:CGRectMake(0.0, -TOOLBAR_HEIGHT, [[self view] bounds].size.width, TOOLBAR_HEIGHT)];
-        [UIView commitAnimations];		
+        [_session_scrollview setFrame:CGRectMake(0.0, 0.0, [_session_scrollview bounds].size.width, [[self view] bounds].size.height)];
+        [UIView commitAnimations];
         _session_toolbar_visible = NO;
     }
 }
