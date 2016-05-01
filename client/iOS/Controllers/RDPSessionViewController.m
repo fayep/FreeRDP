@@ -489,14 +489,14 @@
 }
 
 - (void)updateZoom:(CGSize)size {
-    CGFloat zoomScale = MIN(size.width / _session_scrollview.contentSize.width,
-                          size.height / _session_scrollview.contentSize.height);
-    
+    CGFloat zoomScale = MIN(size.width / _session_view.bounds.size.width,
+                          size.height / _session_view.bounds.size.height);
     if (zoomScale > 1) {
         zoomScale = 1;
     }
     
     [_session_scrollview setMinimumZoomScale:zoomScale];
+    [_session_scrollview setMaximumZoomScale:3];
     [_session_scrollview setZoomScale:zoomScale];
 }
 
